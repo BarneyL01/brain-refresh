@@ -88,6 +88,8 @@ class JournalRepository {
               confidence: confidence,
               tagId: Value(tagId),
               reviewDate: reviewDate,
+              createdAt: Value(_now()),
+              updatedAt: Value(_now()),
             ),
           );
       int? choiceId;

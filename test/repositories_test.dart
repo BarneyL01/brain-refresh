@@ -42,6 +42,26 @@ void main() {
     );
   });
 
+  test('createdAt comes from the injected clock, not the real clock', () async {
+    now = DateTime(2030, 1, 1, 9);
+    final preds = PredictionRepository(db, clock);
+    final p = await preds.create(
+        statement: 'x', confidence: 70, resolveBy: '2030-01-02');
+    expect((await preds.get(p)).createdAt, DateTime(2030, 1, 1, 9));
+
+    final journal = JournalRepository(db, clock);
+    final j = await journal.create(
+      decision: 'd',
+      options: ['a', 'b'],
+      choiceIndex: 0,
+      reasoning: 'r',
+      expectedOutcome: 'e',
+      confidence: 70,
+      reviewDate: '2030-02-01',
+    );
+    expect((await journal.detail(j)).entry.createdAt, DateTime(2030, 1, 1, 9));
+  });
+
   test('prediction due, resolve, reopen', () async {
     final repo = PredictionRepository(db, clock);
     final id = await repo.create(

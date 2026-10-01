@@ -54,6 +54,8 @@ class PredictionRepository {
           resolveBy: resolveBy,
           tagId: Value(tagId),
           journalEntryId: Value(journalEntryId),
+          createdAt: Value(_now()),
+          updatedAt: Value(_now()),
         ));
   }
 
