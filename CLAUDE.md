@@ -4,9 +4,10 @@ Thinking & Wind-down App. Personal Flutter app for calibrated decisions and a cl
 
 ## Project status
 
-- Repo is empty apart from this file. No Flutter project exists yet.
-- Scaffold with `flutter create` (web + android), then build per the spec below.
-- Package versions are confirmed at build time.
+- v1 implemented: schema (13 tables), repositories, all screens, backup, password gate, stats, Pages workflow.
+- Tested: unit tests for stats, rules and all repositories (in-memory drift DB); web build smoke-tested in headless Chromium (database opens, data persists across reload).
+- Not yet done: Android APK build and install (no Android SDK in the dev container), release keystore creation, first Pages deploy (verify `sqlite3.wasm` content type), phone testing.
+- Generated `lib/data/database.g.dart` is committed. Regenerate after any table change.
 
 ## Targets
 
@@ -136,11 +137,14 @@ Thirteen drift tables. Every table has integer `id` primary key plus `createdAt`
 - Password gate (web only, not in Android build): SHA-256 hash compiled into the app; correct entry remembered in that browser. Casual-visitor deterrent only.
 - drift web needs `sqlite3.wasm` and the drift web worker in `web/`, both from the same drift release. Use `WasmDatabase.open`.
 - GitHub Pages cannot set COOP/COEP headers, so storage is not safe across multiple tabs. Accepted for beta.
+- `web/sqlite3.wasm` is committed (from the sqlite3.dart 3.5.2 release). `web/drift_worker.js` is compiled from `web/drift_worker.dart` with `dart compile js -O4 web/drift_worker.dart -o web/drift_worker.js`; CI rebuilds it. Keep both in step with the drift/sqlite3 versions in `pubspec.lock`.
+- Password gate hash is set with `--dart-define=GATE_HASH=<sha256 hex>` (CI reads the repo variable `GATE_HASH`). Empty disables the gate.
 - Verify on first Pages deploy that `sqlite3.wasm` is served as `application/wasm`.
 
 ## Android release
 
 - Create one release keystore at the start; sign every build with it. Keep it and its passwords outside the repo. Never commit keystore or `key.properties`.
+- `android/app/build.gradle.kts` reads `android/key.properties` (storeFile, storePassword, keyAlias, keyPassword). Without it the release build falls back to the debug key and prints a warning; do not install such a build over real data.
 - A different signing key forces uninstall and deletes all data.
 - Export a backup before installing a version with a schema change.
 - After beta, check web-vs-Android differences: back button, keyboard, file import/export, resume from background.
@@ -149,7 +153,7 @@ Thirteen drift tables. Every table has integer `id` primary key plus `createdAt`
 
 ```
 flutter pub get
-dart run build_runner build --delete-conflicting-outputs   # drift codegen
+dart run build_runner build   # drift codegen
 flutter analyze
 flutter test
 flutter run -d chrome
@@ -160,6 +164,8 @@ flutter build apk --release
 ## Conventions
 
 - Use repositories for all DB access; widgets use Riverpod providers, not the database directly.
+- Table columns named `text` are exposed as `body` in Dart (`.named('text')`) because `text` clashes with drift's column builder.
+- Riverpod 3: use `AsyncValue.value`, not `valueOrNull`.
 - Date helpers live in `lib/core/`; use `yyyy-MM-dd` strings for date-only values.
 - Put every target difference behind a conditional import in `lib/platform/`.
 - Write unit tests for stats math (Brier, bands), 24 h lock logic, due-date logic, and backup import/export round trip.

@@ -1,0 +1,48 @@
+name: Deploy web beta to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      # Compile the drift web worker (sqlite3.wasm is committed in web/).
+      - run: dart compile js -O4 web/drift_worker.dart -o web/drift_worker.js
+      # GATE_HASH is the SHA-256 hex of the beta password (repo variable, optional).
+      - run: >
+          flutter build web --release
+          --base-href /${{ github.event.repository.name }}/
+          --dart-define=GATE_HASH=${{ vars.GATE_HASH }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
