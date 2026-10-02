@@ -4,7 +4,8 @@ Thinking & Wind-down App. Personal Flutter app for calibrated decisions and a cl
 
 ## Project status
 
-- v1 implemented: schema (13 tables), repositories, all screens, backup, password gate, stats, Pages workflow.
+- v1 implemented: schema, repositories, all screens, backup, password gate, stats, Pages workflow.
+- Experience check-ins (peak-end counter) added after v1: brief in `docs/experience-checkins-brief.md`, schema version 2, 3 extra tables (16 total). Implemented without notifications (out of scope), so there is no reminder time field; the remembered-rating prompt appears on the Today screen instead.
 - Tested: unit tests for stats, rules and all repositories (in-memory drift DB); web build smoke-tested in headless Chromium (database opens, data persists across reload).
 - Not yet done: Android APK build and install (no Android SDK in the dev container), release keystore creation, first Pages deploy (verify `sqlite3.wasm` content type), phone testing.
 - Generated `lib/data/database.g.dart` is committed. Regenerate after any table change.
@@ -55,6 +56,7 @@ lib/
     journal/           list, add/edit, review
     stats/             calibration chart, scores, counts
     settings/          backup, wind-down editor, tag management
+    experiences/       experience list/form, check-in, remembered rating, look back, Markdown export
   core/                shared widgets, theme, date helpers
 ```
 
@@ -64,7 +66,7 @@ Rules:
 
 ## Data model
 
-Thirteen drift tables. Every table has integer `id` primary key plus `createdAt` / `updatedAt`. Dates without time are `yyyy-MM-dd` text.
+Sixteen drift tables (13 from v1 plus the 3 experience tables below). Every table has integer `id` primary key plus `createdAt` / `updatedAt`. Dates without time are `yyyy-MM-dd` text.
 
 | Table | Fields |
 |---|---|
@@ -81,6 +83,9 @@ Thirteen drift tables. Every table has integer `id` primary key plus `createdAt`
 | shutdowns | date (unique), firstStep, closedAt? |
 | winddown_steps | name, minutes?, sortOrder |
 | winddown_runs | date, startedAt, completedStepNames (JSON text) |
+| experiences | name, startDate, endDate?, status (active/finished), checkinFrequency (daily/session/manual), finishedAt?, rememberAfterDays (default 7), rememberedRating?, rememberedRatingAt?, repeatDecision? (yes/no/yes_with_changes), repeatNotes? |
+| experience_participants | experienceId, displayName |
+| check_ins | experienceId, participantId? (null = main user), rating 1-5, note? (max 200), marker (none/high/low), checkedAt (editable) |
 
 - Today's Morning/Evening selection: small key-value settings table or `shared_preferences`, whichever is simpler.
 - Every table change increments drift `schemaVersion` and adds a migration step.
@@ -125,6 +130,16 @@ Thirteen drift tables. Every table has integer `id` primary key plus `createdAt`
 - Counts: open, due, resolved (True/False), void.
 - Journal stats: entries created, reviews completed, reviews overdue, average reasoning score, reasoning score vs outcome count table (outcome from linked prediction where one exists).
 
+### Experience check-ins
+- Purpose: record 1-5 ratings while an experience happens so a later "do it again?" decision uses the full record, not just the peak and the end (peak-end rule, duration neglect).
+- Check-in screen: 1-5 buttons per person (main user "Me" plus participants), optional note (200 chars), optional high/low marker, editable timestamp. The note and marker are stored on the first check-in saved in a batch.
+- Finishing an experience starts a wait (default 7 days, chosen when finishing), then the Today screen asks for the remembered rating. Until it is answered, no check-in data is shown for that experience (the finished view and the rating screen show none). "Rate it now" skips the wait.
+- Look back: timeline chart (daily experiences leave missed days blank), average, count/share rated 4-5, lowest, highest, final, remembered rating, gap message, notes, repeat decision.
+- Gap message appears only when |remembered - average| >= 1.0. Copy is literal: show the numbers side by side, never say memory is wrong.
+- "Copy as Markdown" (clipboard) exports the full record including the unsaved decision; the app is not meant to be the long-term reflection store. Pure logic and Markdown live in `features/experiences/experience_calc.dart`.
+- Creating an experience with a name similar to an earlier one that has check-ins offers its Look back first.
+- Backup includes the 3 tables. v1 backup files (schema 1) still import; the new tables come in empty.
+
 ### Backup
 - Export: all tables to one JSON file with `schemaVersion` and export timestamp. Android share sheet; web download.
 - Import: pick file, show record count summary, confirm, replace all data. Auto-export current data first. Reject files with a newer `schemaVersion` than the app supports.
@@ -168,6 +183,7 @@ flutter build apk --release
 - Riverpod 3: use `AsyncValue.value`, not `valueOrNull`.
 - Date helpers live in `lib/core/`; use `yyyy-MM-dd` strings for date-only values.
 - Put every target difference behind a conditional import in `lib/platform/`.
+- Do not run `dart format` over the whole repo: it rewrites existing files in a different style and triggers lints. Format only new files, and run `flutter analyze` (CI treats infos as failures).
 - Write unit tests for stats math (Brier, bands), 24 h lock logic, due-date logic, and backup import/export round trip.
 
 ## Open questions (proposed rules in spec, unconfirmed)

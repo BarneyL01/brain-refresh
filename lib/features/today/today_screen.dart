@@ -3,11 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/dates.dart';
 import '../../core/widgets.dart';
+import '../../data/database.dart';
 import '../../data/journal_repository.dart';
 import '../../data/prediction_repository.dart';
 import '../../data/providers.dart';
 import '../journal/journal_detail_screen.dart';
 import '../predictions/prediction_detail_screen.dart';
+import '../experiences/experience_calc.dart';
+import '../experiences/experience_form_screen.dart';
+import '../experiences/experiences_screen.dart';
+import '../experiences/check_in_screen.dart';
+import '../experiences/navigation.dart';
+import '../experiences/remembered_rating_screen.dart';
 import 'day_plan_screen.dart';
 import 'shutdown_screen.dart';
 import 'winddown_run_screen.dart';
@@ -28,19 +35,31 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Today')),
-        body: ListView(padding: const EdgeInsets.all(16), children: [
-          SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: false, label: Text('Morning'), icon: Icon(Icons.wb_sunny)),
-              ButtonSegment(value: true, label: Text('Evening'), icon: Icon(Icons.nightlight)),
-            ],
-            selected: {_evening},
-            onSelectionChanged: (s) => _setEvening(s.first),
-          ),
-          if (_evening) const _Evening() else const _Morning(),
-        ]),
-      );
+    appBar: AppBar(title: const Text('Today')),
+    body: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(
+              value: false,
+              label: Text('Morning'),
+              icon: Icon(Icons.wb_sunny),
+            ),
+            ButtonSegment(
+              value: true,
+              label: Text('Evening'),
+              icon: Icon(Icons.nightlight),
+            ),
+          ],
+          selected: {_evening},
+          onSelectionChanged: (s) => _setEvening(s.first),
+        ),
+        if (_evening) const _Evening() else const _Morning(),
+        const _ExperiencesSection(),
+      ],
+    ),
+  );
 }
 
 class _Morning extends ConsumerWidget {
@@ -49,64 +68,86 @@ class _Morning extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final today = todayYmd();
-    final duePreds = ref.watch(predictionsByFilter(PredictionFilter.due)).value ?? const [];
-    final dueJournal = ref.watch(journalByFilter(JournalFilter.due)).value ?? const [];
+    final duePreds =
+        ref.watch(predictionsByFilter(PredictionFilter.due)).value ?? const [];
+    final dueJournal =
+        ref.watch(journalByFilter(JournalFilter.due)).value ?? const [];
     final plan = ref.watch(dayPlanProvider(today)).value;
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const SectionHeader('Predictions due to resolve'),
-      if (duePreds.isEmpty) const EmptyLine('Nothing due'),
-      for (final p in duePreds)
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(p.statement),
-          subtitle: Text('${p.confidence}% · ${p.resolveBy}'),
-          onTap: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => PredictionDetailScreen(id: p.id))),
-        ),
-      const SectionHeader('Journal reviews due'),
-      if (dueJournal.isEmpty) const EmptyLine('Nothing due'),
-      for (final e in dueJournal)
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(e.decision),
-          subtitle: Text('Review date ${e.reviewDate}'),
-          onTap: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => JournalDetailScreen(id: e.id))),
-        ),
-      const SectionHeader("Tomorrow's first step (from yesterday's shutdown)"),
-      FutureBuilder(
-        future: ref.read(shutdownRepoProvider).latestBefore(today),
-        builder: (c, s) {
-          final sd = s.data;
-          if (sd == null) return const EmptyLine('Not set');
-          return Text('${sd.firstStep}${sd.date == ymd(DateTime.now().subtract(const Duration(days: 1))) ? '' : ' (${sd.date})'}');
-        },
-      ),
-      SectionHeader(
-        "Today's plan",
-        trailing: TextButton(
-          onPressed: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => DayPlanScreen(date: today))),
-          child: Text(plan == null ? 'Create' : 'Edit'),
-        ),
-      ),
-      if (plan == null) const EmptyLine('No plan for today'),
-      if (plan != null) ...[
-        if (plan.tasks.isEmpty) const EmptyLine('No tasks'),
-        for (final t in plan.tasks)
-          CheckboxListTile(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionHeader('Predictions due to resolve'),
+        if (duePreds.isEmpty) const EmptyLine('Nothing due'),
+        for (final p in duePreds)
+          ListTile(
             contentPadding: EdgeInsets.zero,
-            controlAffinity: ListTileControlAffinity.leading,
-            title: Text(t.body,
-                style: t.done ? const TextStyle(decoration: TextDecoration.lineThrough) : null),
-            value: t.done,
-            onChanged: (v) => ref.read(dayPlanRepoProvider).setDone(t.id, v ?? false),
+            title: Text(p.statement),
+            subtitle: Text('${p.confidence}% · ${p.resolveBy}'),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => PredictionDetailScreen(id: p.id),
+              ),
+            ),
           ),
-        if (plan.defaults.isNotEmpty) const SectionHeader('Evening defaults'),
-        for (final d in plan.defaults) Text('${d.label}: ${d.choice}'),
+        const SectionHeader('Journal reviews due'),
+        if (dueJournal.isEmpty) const EmptyLine('Nothing due'),
+        for (final e in dueJournal)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(e.decision),
+            subtitle: Text('Review date ${e.reviewDate}'),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => JournalDetailScreen(id: e.id)),
+            ),
+          ),
+        const SectionHeader(
+          "Tomorrow's first step (from yesterday's shutdown)",
+        ),
+        FutureBuilder(
+          future: ref.read(shutdownRepoProvider).latestBefore(today),
+          builder: (c, s) {
+            final sd = s.data;
+            if (sd == null) return const EmptyLine('Not set');
+            return Text(
+              '${sd.firstStep}${sd.date == ymd(DateTime.now().subtract(const Duration(days: 1))) ? '' : ' (${sd.date})'}',
+            );
+          },
+        ),
+        SectionHeader(
+          "Today's plan",
+          trailing: TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => DayPlanScreen(date: today)),
+            ),
+            child: Text(plan == null ? 'Create' : 'Edit'),
+          ),
+        ),
+        if (plan == null) const EmptyLine('No plan for today'),
+        if (plan != null) ...[
+          if (plan.tasks.isEmpty) const EmptyLine('No tasks'),
+          for (final t in plan.tasks)
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: Text(
+                t.body,
+                style: t.done
+                    ? const TextStyle(decoration: TextDecoration.lineThrough)
+                    : null,
+              ),
+              value: t.done,
+              onChanged: (v) =>
+                  ref.read(dayPlanRepoProvider).setDone(t.id, v ?? false),
+            ),
+          if (plan.defaults.isNotEmpty) const SectionHeader('Evening defaults'),
+          for (final d in plan.defaults) Text('${d.label}: ${d.choice}'),
+        ],
       ],
-    ]);
+    );
   }
 }
 
@@ -119,40 +160,150 @@ class _Evening extends ConsumerWidget {
     final today = todayYmd();
     final plan = ref.watch(dayPlanProvider(tomorrow)).value;
     final shutdown = ref.watch(shutdownProvider(today)).value;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const SectionHeader('Decide early'),
-      Card(
-        child: ListTile(
-          title: Text(plan == null ? "Plan tomorrow" : "Edit tomorrow's plan"),
-          subtitle: Text(plan == null
-              ? 'Top 3 tasks and tonight\'s defaults'
-              : '${plan.tasks.length} tasks · ${plan.defaults.length} defaults'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => DayPlanScreen(date: tomorrow))),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionHeader('Decide early'),
+        Card(
+          child: ListTile(
+            title: Text(
+              plan == null ? "Plan tomorrow" : "Edit tomorrow's plan",
+            ),
+            subtitle: Text(
+              plan == null
+                  ? 'Top 3 tasks and tonight\'s defaults'
+                  : '${plan.tasks.length} tasks · ${plan.defaults.length} defaults',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => DayPlanScreen(date: tomorrow)),
+            ),
+          ),
         ),
-      ),
-      const SectionHeader('Shutdown'),
-      Card(
-        child: ListTile(
-          title: Text(shutdown?.closedAt != null ? 'Work closed' : 'Shutdown for today'),
-          subtitle: shutdown?.firstStep.isNotEmpty == true
-              ? Text('First step: ${shutdown!.firstStep}')
-              : const Text('Open loops, first step, close work'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.push(
-              context, MaterialPageRoute(builder: (_) => ShutdownScreen(date: today))),
+        const SectionHeader('Shutdown'),
+        Card(
+          child: ListTile(
+            title: Text(
+              shutdown?.closedAt != null ? 'Work closed' : 'Shutdown for today',
+            ),
+            subtitle: shutdown?.firstStep.isNotEmpty == true
+                ? Text('First step: ${shutdown!.firstStep}')
+                : const Text('Open loops, first step, close work'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => ShutdownScreen(date: today)),
+            ),
+          ),
         ),
-      ),
-      const SectionHeader('Wind-down'),
-      Card(
-        child: ListTile(
-          title: const Text('Start wind-down'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.push(
-              context, MaterialPageRoute(builder: (_) => const WinddownRunScreen())),
+        const SectionHeader('Wind-down'),
+        Card(
+          child: ListTile(
+            title: const Text('Start wind-down'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const WinddownRunScreen()),
+            ),
+          ),
         ),
+      ],
+    );
+  }
+}
+
+class _ExperiencesSection extends ConsumerWidget {
+  const _ExperiencesSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final all = ref.watch(experiencesProvider).value ?? const [];
+    final now = DateTime.now();
+    final today = todayYmd(now);
+    final due = all.where((e) => isRememberedDue(e, now)).toList();
+    final active = all.where((e) => e.status == 'active').toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionHeader(
+          'Experiences',
+          trailing: TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ExperiencesScreen()),
+            ),
+            child: const Text('All'),
+          ),
+        ),
+        for (final e in due)
+          Card(
+            child: ListTile(
+              title: Text('Rate ${e.name} from memory'),
+              subtitle: const Text(
+                'Looking back, how would you rate it overall?',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => RememberedRatingScreen(id: e.id),
+                ),
+              ),
+            ),
+          ),
+        if (active.isEmpty && due.isEmpty)
+          const EmptyLine('No active experiences'),
+        for (final e in active)
+          _ActiveExperienceTile(experience: e, today: today),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            icon: const Icon(Icons.add),
+            label: const Text('New experience'),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ExperienceFormScreen()),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ActiveExperienceTile extends ConsumerWidget {
+  const _ActiveExperienceTile({required this.experience, required this.today});
+  final Experience experience;
+  final String today;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final e = experience;
+    final checkIns = ref.watch(checkInsProvider(e.id)).value ?? const [];
+    final checkedToday = checkIns.any((c) => todayYmd(c.checkedAt) == today);
+    final ended = e.endDate != null && e.endDate!.compareTo(today) < 0;
+    return Card(
+      child: ListTile(
+        title: Text(e.name),
+        subtitle: Text(
+          [
+            if (e.checkinFrequency == 'daily')
+              checkedToday ? 'Checked in today' : 'Not checked in today',
+            if (ended) 'End date passed',
+          ].join(' · '),
+        ),
+        trailing: FilledButton(
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CheckInScreen(experienceId: e.id),
+            ),
+          ),
+          child: const Text('Check in'),
+        ),
+        onTap: () => openExperience(context, e),
       ),
-    ]);
+    );
   }
 }

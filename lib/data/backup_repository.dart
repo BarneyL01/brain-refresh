@@ -20,47 +20,66 @@ class BackupException implements Exception {
 
 class BackupRepository {
   BackupRepository(this.db, [DateTime Function()? clock])
-      : _now = clock ?? DateTime.now;
+    : _now = clock ?? DateTime.now;
   final AppDatabase db;
   final DateTime Function() _now;
 
   Future<Map<String, List<Map<String, Object?>>>> _dump() async => {
-        'tags': [for (final r in await db.select(db.tags).get()) r.toJson()],
-        'predictions': [for (final r in await db.select(db.predictions).get()) r.toJson()],
-        'prediction_date_changes': [
-          for (final r in await db.select(db.predictionDateChanges).get()) r.toJson()
-        ],
-        'journal_entries': [
-          for (final r in await db.select(db.journalEntries).get()) r.toJson()
-        ],
-        'journal_options': [
-          for (final r in await db.select(db.journalOptions).get()) r.toJson()
-        ],
-        'journal_reviews': [
-          for (final r in await db.select(db.journalReviews).get()) r.toJson()
-        ],
-        'day_plans': [for (final r in await db.select(db.dayPlans).get()) r.toJson()],
-        'day_plan_tasks': [
-          for (final r in await db.select(db.dayPlanTasks).get()) r.toJson()
-        ],
-        'day_plan_defaults': [
-          for (final r in await db.select(db.dayPlanDefaults).get()) r.toJson()
-        ],
-        'open_loops': [for (final r in await db.select(db.openLoops).get()) r.toJson()],
-        'shutdowns': [for (final r in await db.select(db.shutdowns).get()) r.toJson()],
-        'winddown_steps': [
-          for (final r in await db.select(db.winddownSteps).get()) r.toJson()
-        ],
-        'winddown_runs': [
-          for (final r in await db.select(db.winddownRuns).get()) r.toJson()
-        ],
-      };
+    'tags': [for (final r in await db.select(db.tags).get()) r.toJson()],
+    'predictions': [
+      for (final r in await db.select(db.predictions).get()) r.toJson(),
+    ],
+    'prediction_date_changes': [
+      for (final r in await db.select(db.predictionDateChanges).get())
+        r.toJson(),
+    ],
+    'journal_entries': [
+      for (final r in await db.select(db.journalEntries).get()) r.toJson(),
+    ],
+    'journal_options': [
+      for (final r in await db.select(db.journalOptions).get()) r.toJson(),
+    ],
+    'journal_reviews': [
+      for (final r in await db.select(db.journalReviews).get()) r.toJson(),
+    ],
+    'day_plans': [
+      for (final r in await db.select(db.dayPlans).get()) r.toJson(),
+    ],
+    'day_plan_tasks': [
+      for (final r in await db.select(db.dayPlanTasks).get()) r.toJson(),
+    ],
+    'day_plan_defaults': [
+      for (final r in await db.select(db.dayPlanDefaults).get()) r.toJson(),
+    ],
+    'open_loops': [
+      for (final r in await db.select(db.openLoops).get()) r.toJson(),
+    ],
+    'shutdowns': [
+      for (final r in await db.select(db.shutdowns).get()) r.toJson(),
+    ],
+    'winddown_steps': [
+      for (final r in await db.select(db.winddownSteps).get()) r.toJson(),
+    ],
+    'winddown_runs': [
+      for (final r in await db.select(db.winddownRuns).get()) r.toJson(),
+    ],
+    'experiences': [
+      for (final r in await db.select(db.experiences).get()) r.toJson(),
+    ],
+    'experience_participants': [
+      for (final r in await db.select(db.experienceParticipants).get())
+        r.toJson(),
+    ],
+    'check_ins': [
+      for (final r in await db.select(db.checkIns).get()) r.toJson(),
+    ],
+  };
 
   Future<String> exportJson() async => jsonEncode({
-        'schemaVersion': AppDatabase.currentSchemaVersion,
-        'exportedAt': _now().toIso8601String(),
-        'tables': await _dump(),
-      });
+    'schemaVersion': AppDatabase.currentSchemaVersion,
+    'exportedAt': _now().toIso8601String(),
+    'tables': await _dump(),
+  });
 
   /// Parses and validates a backup file without changing any data.
   BackupSummary summarize(String json) {
@@ -88,8 +107,9 @@ class BackupRepository {
     }
     if ((decoded['schemaVersion'] as int) > AppDatabase.currentSchemaVersion) {
       throw BackupException(
-          'Backup is from a newer app version (schema ${decoded['schemaVersion']}); '
-          'update the app first');
+        'Backup is from a newer app version (schema ${decoded['schemaVersion']}); '
+        'update the app first',
+      );
     }
     return decoded;
   }
@@ -99,8 +119,9 @@ class BackupRepository {
   Future<void> import(String json) async {
     final map = _parse(json);
     final t = map['tables'] as Map<String, dynamic>;
-    List<Map<String, dynamic>> rows(String name) =>
-        [for (final r in (t[name] as List? ?? const [])) r as Map<String, dynamic>];
+    List<Map<String, dynamic>> rows(String name) => [
+      for (final r in (t[name] as List? ?? const [])) r as Map<String, dynamic>,
+    ];
 
     await db.transaction(() async {
       for (final table in db.allTables) {
@@ -118,18 +139,32 @@ class BackupRepository {
 
       await load(db.tags, 'tags', Tag.fromJson);
       await load(db.predictions, 'predictions', Prediction.fromJson);
-      await load(db.predictionDateChanges, 'prediction_date_changes',
-          PredictionDateChange.fromJson);
+      await load(
+        db.predictionDateChanges,
+        'prediction_date_changes',
+        PredictionDateChange.fromJson,
+      );
       await load(db.journalEntries, 'journal_entries', JournalEntry.fromJson);
       await load(db.journalOptions, 'journal_options', JournalOption.fromJson);
       await load(db.journalReviews, 'journal_reviews', JournalReview.fromJson);
       await load(db.dayPlans, 'day_plans', DayPlan.fromJson);
       await load(db.dayPlanTasks, 'day_plan_tasks', DayPlanTask.fromJson);
-      await load(db.dayPlanDefaults, 'day_plan_defaults', DayPlanDefault.fromJson);
+      await load(
+        db.dayPlanDefaults,
+        'day_plan_defaults',
+        DayPlanDefault.fromJson,
+      );
       await load(db.openLoops, 'open_loops', OpenLoop.fromJson);
       await load(db.shutdowns, 'shutdowns', Shutdown.fromJson);
       await load(db.winddownSteps, 'winddown_steps', WinddownStep.fromJson);
       await load(db.winddownRuns, 'winddown_runs', WinddownRun.fromJson);
+      await load(db.experiences, 'experiences', Experience.fromJson);
+      await load(
+        db.experienceParticipants,
+        'experience_participants',
+        ExperienceParticipant.fromJson,
+      );
+      await load(db.checkIns, 'check_ins', CheckIn.fromJson);
     });
   }
 }

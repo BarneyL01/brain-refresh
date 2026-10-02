@@ -1,6 +1,7 @@
 import 'package:brain_refresh/data/backup_repository.dart';
 import 'package:brain_refresh/data/database.dart';
 import 'package:brain_refresh/data/dayplan_repository.dart';
+import 'package:brain_refresh/data/experience_repository.dart';
 import 'package:brain_refresh/data/journal_repository.dart';
 import 'package:brain_refresh/data/prediction_repository.dart';
 import 'package:brain_refresh/data/shutdown_repository.dart';
@@ -20,33 +21,46 @@ void main() {
   });
   tearDown(() => db.close());
 
-  test('prediction confidence locks after 24h, date extension recorded', () async {
-    final repo = PredictionRepository(db, clock);
-    final id = await repo.create(
-        statement: 'It rains', confidence: 70, resolveBy: '2026-10-05');
-    await repo.update(id, statement: 'It rains tomorrow', confidence: 80);
-    expect((await repo.get(id)).confidence, 80);
+  test(
+    'prediction confidence locks after 24h, date extension recorded',
+    () async {
+      final repo = PredictionRepository(db, clock);
+      final id = await repo.create(
+        statement: 'It rains',
+        confidence: 70,
+        resolveBy: '2026-10-05',
+      );
+      await repo.update(id, statement: 'It rains tomorrow', confidence: 80);
+      expect((await repo.get(id)).confidence, 80);
 
-    now = now.add(const Duration(hours: 25));
-    await repo.update(id, statement: 'It rains tomorrow', confidence: 55);
-    expect((await repo.get(id)).confidence, 80);
+      now = now.add(const Duration(hours: 25));
+      await repo.update(id, statement: 'It rains tomorrow', confidence: 55);
+      expect((await repo.get(id)).confidence, 80);
 
-    await repo.extendDate(id, '2026-10-09');
-    final hist = await repo.history(id);
-    expect(hist.single.oldDate, '2026-10-05');
-    expect(hist.single.newDate, '2026-10-09');
+      await repo.extendDate(id, '2026-10-09');
+      final hist = await repo.history(id);
+      expect(hist.single.oldDate, '2026-10-05');
+      expect(hist.single.newDate, '2026-10-09');
 
-    expect(
-      () => repo.create(statement: 'x', confidence: 70, resolveBy: '2026-09-30'),
-      throwsArgumentError,
-    );
-  });
+      expect(
+        () => repo.create(
+          statement: 'x',
+          confidence: 70,
+          resolveBy: '2026-09-30',
+        ),
+        throwsArgumentError,
+      );
+    },
+  );
 
   test('createdAt comes from the injected clock, not the real clock', () async {
     now = DateTime(2030, 1, 1, 9);
     final preds = PredictionRepository(db, clock);
     final p = await preds.create(
-        statement: 'x', confidence: 70, resolveBy: '2030-01-02');
+      statement: 'x',
+      confidence: 70,
+      resolveBy: '2030-01-02',
+    );
     expect((await preds.get(p)).createdAt, DateTime(2030, 1, 1, 9));
 
     final journal = JournalRepository(db, clock);
@@ -65,7 +79,10 @@ void main() {
   test('prediction due, resolve, reopen', () async {
     final repo = PredictionRepository(db, clock);
     final id = await repo.create(
-        statement: 'A', confidence: 60, resolveBy: '2026-10-01');
+      statement: 'A',
+      confidence: 60,
+      resolveBy: '2026-10-01',
+    );
     expect(await repo.watch(PredictionFilter.due).first, hasLength(1));
     await repo.resolve(id, 'true');
     expect(await repo.watch(PredictionFilter.resolved).first, hasLength(1));
@@ -106,8 +123,12 @@ void main() {
 
     now = DateTime(2026, 11, 2);
     expect(await repo.watch(JournalFilter.due).first, hasLength(1));
-    await repo.saveReview(id,
-        whatHappened: 'ok', reasoningScore: 4, predictionOutcome: 'true');
+    await repo.saveReview(
+      id,
+      whatHappened: 'ok',
+      reasoningScore: 4,
+      predictionOutcome: 'true',
+    );
     d = await repo.detail(id);
     expect(d.review?.reasoningScore, 4);
     expect(d.prediction?.outcome, 'true');
@@ -117,19 +138,27 @@ void main() {
 
   test('day plan: one per date, done kept, defaults replaced', () async {
     final repo = DayPlanRepository(db);
-    await repo.save('2026-10-02',
-        tasks: ['A', 'B'], defaults: [(label: 'Dinner', choice: 'Leftovers')]);
+    await repo.save(
+      '2026-10-02',
+      tasks: ['A', 'B'],
+      defaults: [(label: 'Dinner', choice: 'Leftovers')],
+    );
     var v = (await repo.get('2026-10-02'))!;
     await repo.setDone(v.tasks.first.id, true);
-    await repo.save('2026-10-02',
-        tasks: ['A', 'C'], defaults: [(label: 'Dinner', choice: 'Pasta')]);
+    await repo.save(
+      '2026-10-02',
+      tasks: ['A', 'C'],
+      defaults: [(label: 'Dinner', choice: 'Pasta')],
+    );
     v = (await repo.get('2026-10-02'))!;
     expect(v.tasks.map((t) => (t.body, t.done)), [('A', true), ('C', false)]);
     expect(v.defaults.single.choice, 'Pasta');
     expect(await db.select(db.dayPlans).get(), hasLength(1));
     expect(await repo.knownLabels(), ['Dinner']);
-    expect(() => repo.save('2026-10-03', tasks: ['1', '2', '3', '4'], defaults: []),
-        throwsArgumentError);
+    expect(
+      () => repo.save('2026-10-03', tasks: ['1', '2', '3', '4'], defaults: []),
+      throwsArgumentError,
+    );
   });
 
   test('shutdown: suggestions, first step required, loops carry', () async {
@@ -165,20 +194,27 @@ void main() {
     await repo.addStep('Phone on charger', null);
     final ids = (await repo.steps()).map((s) => s.id).toList();
     await repo.move(ids.last, 0);
-    expect((await repo.steps()).map((s) => s.name),
-        ['Phone on charger', 'Walk', 'Breathing']);
+    expect((await repo.steps()).map((s) => s.name), [
+      'Phone on charger',
+      'Walk',
+      'Breathing',
+    ]);
     await repo.deleteStep(ids.first);
     expect((await repo.steps()).map((s) => s.sortOrder), [0, 1]);
     await repo.logRun(now, ['Phone on charger']);
-    expect((await db.select(db.winddownRuns).get()).single.completedStepNames,
-        '["Phone on charger"]');
+    expect(
+      (await db.select(db.winddownRuns).get()).single.completedStepNames,
+      '["Phone on charger"]',
+    );
   });
 
   test('tags: delete only when unused', () async {
     final tags = TagRepository(db);
     final t = await tags.add('Work');
-    await PredictionRepository(db, clock).create(
-        statement: 'x', confidence: 70, resolveBy: '2026-10-02', tagId: t);
+    await PredictionRepository(
+      db,
+      clock,
+    ).create(statement: 'x', confidence: 70, resolveBy: '2026-10-02', tagId: t);
     expect(await tags.deleteIfUnused(t), isFalse);
     final u = await tags.add('Unused');
     expect(await tags.deleteIfUnused(u), isTrue);
@@ -189,7 +225,11 @@ void main() {
     final t = await tags.add('Work');
     final preds = PredictionRepository(db, clock);
     final p = await preds.create(
-        statement: 'x', confidence: 70, resolveBy: '2026-10-02', tagId: t);
+      statement: 'x',
+      confidence: 70,
+      resolveBy: '2026-10-02',
+      tagId: t,
+    );
     await preds.resolve(p, 'false');
     await JournalRepository(db, clock).create(
       decision: 'd',
@@ -200,16 +240,30 @@ void main() {
       confidence: 60,
       reviewDate: '2026-11-01',
     );
-    await DayPlanRepository(db)
-        .save('2026-10-02', tasks: ['A'], defaults: [(label: 'L', choice: 'C')]);
+    await DayPlanRepository(
+      db,
+    ).save('2026-10-02', tasks: ['A'], defaults: [(label: 'L', choice: 'C')]);
     await WinddownRepository(db, clock).addStep('Walk', 15);
+    final exps = ExperienceRepository(db, clock);
+    final x = await exps.create(
+      name: 'Trip',
+      startDate: '2026-10-01',
+      participants: ['Sam'],
+    );
+    await exps.addCheckIns(
+      x,
+      ratings: [(participantId: null, rating: 4)],
+      note: 'Nice',
+    );
 
     final backup = BackupRepository(db, clock);
     final json = await backup.exportJson();
     final summary = backup.summarize(json);
     expect(summary.counts['predictions'], 1);
     expect(summary.counts['journal_options'], 2);
-    expect(summary.counts.length, 13);
+    expect(summary.counts['check_ins'], 1);
+    expect(summary.counts['experience_participants'], 1);
+    expect(summary.counts.length, 16);
 
     // Change data, then restore.
     await preds.reopen(p);
@@ -219,7 +273,7 @@ void main() {
     expect(await db.select(db.tags).get(), hasLength(1));
     expect(await backup.exportJson(), json);
 
-    final newer = json.replaceFirst('"schemaVersion":1', '"schemaVersion":99');
+    final newer = json.replaceFirst('"schemaVersion":2', '"schemaVersion":99');
     expect(() => backup.summarize(newer), throwsA(isA<BackupException>()));
     expect(() => backup.summarize('nope'), throwsA(isA<BackupException>()));
   });
